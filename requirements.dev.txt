@@ -1,0 +1,7 @@
+black
+pylint
+
+# mypy
+mypy
+types-toml
+types-requests

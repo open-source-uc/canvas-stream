@@ -1,0 +1,31 @@
+query ($course_id: ID) {
+  course(id: $course_id) {
+    modulesConnection(first: 15) {
+      nodes {
+        _id
+        updatedAt
+        name
+        moduleItems {
+          _id
+          updatedAt
+          content {
+            ... on File {
+              type: __typename
+              _id
+              updatedAt
+              displayName
+              url
+            }
+            ... on ExternalUrl {
+              type: __typename
+              _id
+              updatedAt
+              title
+              url
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+.venv/
+.venv/
+.vscode/
+__pycache__/
+.mypy_cache/
+
+# proyect related files
+canvas/
+*.db
+config.toml
+
+# other
+.DS_Store
+.idea

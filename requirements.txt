@@ -1,0 +1,2 @@
+requests==2.26
+toml==0.10
