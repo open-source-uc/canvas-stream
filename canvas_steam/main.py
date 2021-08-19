@@ -12,7 +12,13 @@ import toml
 from requests import RequestException
 
 from .requester import Requester
-from .helpers import get_gql_query, html_hyperlink_document, naive_datetime, slugify
+from .helpers import (
+    get_gql_query,
+    html_hyperlink_document,
+    naive_datetime,
+    slugify,
+    userfull_download_url_or_empty_str,
+)
 from .db_api import DataBase
 from . import db as schema
 from .db import Course, ExternalURL, File, Folder
@@ -79,6 +85,8 @@ def _main_loop(requester: Requester):
         if course.saved_at and course.saved_at >= course.updated_at:
             continue
 
+        print(f"Updating references of {course.name}")
+
         # 2. Check course modules items (files & external URLs)
         response = requester.api_gql(GQL_MODULES_AND_ITEMS, {"course_id": course.id})
         for module in response["course"]["modulesConnection"]["nodes"]:
@@ -104,8 +112,8 @@ def _main_loop(requester: Requester):
 
             try:
                 files = requester.api_rest(f"/folders/{folder.id}/files")
-                print(f"Something wrong happened with the folder {folder.id} of {course.name}")
             except RequestException:
+                print(f"Request error with folder {folder.id} ({course.name})")
                 continue
 
             _save_files(files, folder.id, course.id)
@@ -118,7 +126,15 @@ def _main_loop(requester: Requester):
         course.upsert()
 
     # 5. Download the files and links
+    print("Dowloading new files...")
     for file in File.find_not_saved():
+        # In some cases, the URL obtained from the API
+        # doesn't have the verifier that makes it posible
+        # to download the file.
+        # `download_url` will be empty in those cases.
+        if not file.download_url:
+            continue
+
         requester.download(file.download_url, _complete_file_path(file))
         file.saved_at = datetime.datetime.now().isoformat()
         file.upsert()
@@ -126,11 +142,12 @@ def _main_loop(requester: Requester):
     # TODO: links (gdown, link file, etc)
     for external_url in ExternalURL.find_not_saved():
         # if external_url is "google drive":
-            # gdown.download(external_url.url)
+        # gdown.download(external_url.url)
 
         # Base Case: make a file linking to the URL
         external_url_path = _complete_external_url_path(external_url)
         external_url_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f" URL -- {external_url_path}")
         with external_url_path.open("w") as io_file:
             io_file.write(html_hyperlink_document(external_url.url))
 
@@ -144,7 +161,7 @@ def _save_module_item(item: StrMapping, course_id: int, module: StrMapping):
         file = File(
             id=content["_id"],
             course_id=course_id,
-            download_url=content["url"],
+            download_url=userfull_download_url_or_empty_str(content["url"]),
             name=content["displayName"],
             module_name=module["name"],
             updated_at=naive_datetime(content["updatedAt"]),
@@ -167,7 +184,7 @@ def _save_files(files: Iterable[StrMapping], folder_id: int, course_id: int):
         file = File(
             id=file_data["id"],
             name=file_data["filename"],
-            download_url=file_data["url"],
+            download_url=userfull_download_url_or_empty_str(file_data["url"]),
             updated_at=naive_datetime(file_data["updated_at"]),
             course_id=course_id,
             folder_id=folder_id,

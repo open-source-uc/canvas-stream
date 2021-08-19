@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from datetime import datetime
 from string import Template
+from urllib.parse import urlsplit, parse_qs
 
 import requests
 
@@ -74,3 +75,10 @@ HTML_HYPERLINK_DOCUMENT_TEMPLATE = Template(
 def html_hyperlink_document(url: str):
     """OS-independent solution to make .url like files"""
     return HTML_HYPERLINK_DOCUMENT_TEMPLATE.substitute(dict(url=url))
+
+
+def userfull_download_url_or_empty_str(url: str):
+    "Verifies if the `verifier` key is in the url parameters"
+    if "verifier" in parse_qs(urlsplit(url).query):
+        return url
+    return ""
