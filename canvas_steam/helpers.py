@@ -6,6 +6,7 @@ import unicodedata
 import re
 from pathlib import Path
 from datetime import datetime
+from string import Template
 
 import requests
 
@@ -56,3 +57,19 @@ def dowload_to_file(request_stream: requests.Response, path: Path):
             progress += len(data)
             print(f"{progress / total_bytes:4.0%} -- {path}", end="\r")
         print(end="\n")
+
+
+HTML_HYPERLINK_DOCUMENT_TEMPLATE = Template(
+    """
+<html>
+    <head>
+        <meta http-equiv="refresh" content="0; url=${url}" />
+    </head>
+</html>
+"""
+)
+
+
+def html_hyperlink_document(url: str):
+    """OS-independent solution to make .url like files"""
+    return HTML_HYPERLINK_DOCUMENT_TEMPLATE.substitute(dict(url=url))
