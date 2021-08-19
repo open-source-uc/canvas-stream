@@ -9,6 +9,7 @@ from typing import Any, Iterable, Mapping
 import time
 
 import toml
+from requests import RequestException
 
 from .requester import Requester
 from .helpers import get_gql_query, html_hyperlink_document, naive_datetime, slugify
@@ -101,7 +102,12 @@ def _main_loop(requester: Requester):
             if folder.files_count == 0 or is_saved:
                 continue
 
-            files = requester.api_rest(f"/folders/{folder.id}/files")
+            try:
+                files = requester.api_rest(f"/folders/{folder.id}/files")
+                print(f"Something wrong happened with the folder {folder.id} of {course.name}")
+            except RequestException:
+                continue
+
             _save_files(files, folder.id, course.id)
 
             folder.saved_at = datetime.datetime.now().isoformat()
@@ -123,7 +129,9 @@ def _main_loop(requester: Requester):
             # gdown.download(external_url.url)
 
         # Base Case: make a file linking to the URL
-        with _complete_external_url_path(external_url).open("w") as io_file:
+        external_url_path = _complete_external_url_path(external_url)
+        external_url_path.parent.mkdir(parents=True, exist_ok=True)
+        with external_url_path.open("w") as io_file:
             io_file.write(html_hyperlink_document(external_url.url))
 
 

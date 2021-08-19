@@ -33,6 +33,7 @@ def slugify(value: str) -> str:
         .replace(r"/", "-")
         .replace("\\", "-")
         .replace("*", "")
+        .replace(":", "")
     )
     return re.sub(r"[-]+", "-", value).strip("_-.")
 
