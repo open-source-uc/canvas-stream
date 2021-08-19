@@ -52,7 +52,7 @@ def main(pause_time=20):
         while True:
             print("Running iteration...")
             _main_loop(requester)
-            print(f"Waiting {pause_time} before next iteration")
+            print(f"Waiting {pause_time} seconds before next iteration")
             time.sleep(pause_time)
     except KeyboardInterrupt:
         sys.exit(0)

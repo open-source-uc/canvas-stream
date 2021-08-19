@@ -64,6 +64,6 @@ class Requester:
         "Downloads a file from a Canvas `url` to a `path`"
         # TODO: this check should be donde when saving the url to the database
         if "verifier" not in parse_qs(urlsplit(url).query):
-            print(f"Error: skiping file: {path}")
+            print(f"Skiping file because the verifier key was not found: {path}")
         else:
             dowload_to_file(self.get(url, stream=True), path)
