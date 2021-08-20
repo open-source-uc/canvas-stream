@@ -126,7 +126,12 @@ def _main_loop(requester: CanvasAPI):
         # to download the file.
         # `download_url` will be empty in those cases.
         if not file.download_url:
-            continue
+            # A now request is made here to try again, but now
+            # only asking for the information of the file
+            file_data = requester.file(file.id)
+            file.download_url = userfull_download_url_or_empty_str(file_data["url"])
+            if not file.download_url:
+                continue
 
         requester.download(file.download_url, _complete_file_path(file))
         file.saved_at = datetime.datetime.now().isoformat()
@@ -153,8 +158,6 @@ def _save_module_items(
     for item in items:
         if not item["content"]:
             continue
-
-        print(item)
 
         content = item["content"]
         if content["type"] == "File":
