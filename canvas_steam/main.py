@@ -9,13 +9,22 @@ from typing import Any, Iterable, Mapping
 import time
 
 import toml
+from requests import RequestException
 
 from .requester import Requester
-from .helpers import get_gql_query, naive_datetime, slugify
+from .helpers import (
+    get_gql_query,
+    html_hyperlink_document,
+    naive_datetime,
+    slugify,
+    userfull_download_url_or_empty_str,
+)
 from .db_api import DataBase
 from . import db as schema
 from .db import Course, ExternalURL, File, Folder
 
+
+StrMapping = Mapping[str, Any]
 
 GQL_COURSES = get_gql_query("courses")
 GQL_MODULES_AND_ITEMS = get_gql_query("modules_items")
@@ -48,9 +57,9 @@ def main(pause_time=20):
     database.connection.commit()
     try:
         while True:
-            print("Runing iteraion...")
+            print("Running iteration...")
             _main_loop(requester)
-            print(f"Waiting {pause_time} before next iteration")
+            print(f"Waiting {pause_time} seconds before next iteration")
             time.sleep(pause_time)
     except KeyboardInterrupt:
         sys.exit(0)
@@ -76,11 +85,13 @@ def _main_loop(requester: Requester):
         if course.saved_at and course.saved_at >= course.updated_at:
             continue
 
-        # 2. Check course modules items (files & external urls)
+        print(f"Updating references of {course.name}")
+
+        # 2. Check course modules items (files & external URLs)
         response = requester.api_gql(GQL_MODULES_AND_ITEMS, {"course_id": course.id})
         for module in response["course"]["modulesConnection"]["nodes"]:
             for item in module["moduleItems"]:
-                _save_module_item(item, course.id)
+                _save_module_item(item, course.id, module)
 
         # 3. Check folders (files)
         folders = requester.api_rest(f"/courses/{course.id}/folders")
@@ -99,7 +110,12 @@ def _main_loop(requester: Requester):
             if folder.files_count == 0 or is_saved:
                 continue
 
-            files = requester.api_rest(f"/folders/{folder.id}/files")
+            try:
+                files = requester.api_rest(f"/folders/{folder.id}/files")
+            except RequestException:
+                print(f"Request error with folder {folder.id} ({course.name})")
+                continue
+
             _save_files(files, folder.id, course.id)
 
             folder.saved_at = datetime.datetime.now().isoformat()
@@ -110,18 +126,33 @@ def _main_loop(requester: Requester):
         course.upsert()
 
     # 5. Download the files and links
+    print("Dowloading new files...")
     for file in File.find_not_saved():
-        requester.download(file.download_url, _complete_path(file))
+        # In some cases, the URL obtained from the API
+        # doesn't have the verifier that makes it posible
+        # to download the file.
+        # `download_url` will be empty in those cases.
+        if not file.download_url:
+            continue
+
+        requester.download(file.download_url, _complete_file_path(file))
         file.saved_at = datetime.datetime.now().isoformat()
         file.upsert()
 
     # TODO: links (gdown, link file, etc)
-    # for external_url in ExternalURL.find_not_saved():
-    # if external_url is "google drive":
-    # gdown.download(external_url.url)
+    for external_url in ExternalURL.find_not_saved():
+        # if external_url is "google drive":
+        # gdown.download(external_url.url)
+
+        # Base Case: make a file linking to the URL
+        external_url_path = _complete_external_url_path(external_url)
+        external_url_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f" URL -- {external_url_path}")
+        with external_url_path.open("w") as io_file:
+            io_file.write(html_hyperlink_document(external_url.url))
 
 
-def _save_module_item(item: Mapping[str, Any], course_id: int):
+def _save_module_item(item: StrMapping, course_id: int, module: StrMapping):
     if not item["content"]:
         return
 
@@ -130,8 +161,9 @@ def _save_module_item(item: Mapping[str, Any], course_id: int):
         file = File(
             id=content["_id"],
             course_id=course_id,
-            download_url=content["url"],
+            download_url=userfull_download_url_or_empty_str(content["url"]),
             name=content["displayName"],
+            module_name=module["name"],
             updated_at=naive_datetime(content["updatedAt"]),
         )
         file.upsert()
@@ -140,18 +172,19 @@ def _save_module_item(item: Mapping[str, Any], course_id: int):
             id=content["_id"],
             url=content["url"],
             course_id=course_id,
+            module_name=module["name"],
             updated_at=naive_datetime(content["updatedAt"]),
             title=content["title"],
         )
         ext_url.upsert()
 
 
-def _save_files(files: Iterable[Mapping[str, Any]], folder_id: int, course_id: int):
+def _save_files(files: Iterable[StrMapping], folder_id: int, course_id: int):
     for file_data in files:
         file = File(
             id=file_data["id"],
             name=file_data["filename"],
-            download_url=file_data["url"],
+            download_url=userfull_download_url_or_empty_str(file_data["url"]),
             updated_at=naive_datetime(file_data["updated_at"]),
             course_id=course_id,
             folder_id=folder_id,
@@ -159,8 +192,12 @@ def _save_files(files: Iterable[Mapping[str, Any]], folder_id: int, course_id: i
         file.upsert()
 
 
-def _complete_path(file: File):
-    course = next(Course.find(id=file.course_id))
+def _complete_path(course_id: int, path: Path):
+    course = next(Course.find(id=course_id))
+    return Path("canvas", slugify(course.name), path)
+
+
+def _complete_file_path(file: File):
     file_path = Path(slugify(file.name))
 
     if file.folder_id:
@@ -168,4 +205,9 @@ def _complete_path(file: File):
         parent_path_parts = map(slugify, Path(folder.full_name).parts)
         file_path = Path(*parent_path_parts, file_path)
 
-    return Path("canvas", slugify(course.name), file_path)
+    return _complete_path(file.course_id, file_path)
+
+
+def _complete_external_url_path(ext_url: ExternalURL):
+    ext_url_path = Path(slugify(ext_url.module_name), slugify(ext_url.title) + ".html")
+    return _complete_path(ext_url.course_id, ext_url_path)

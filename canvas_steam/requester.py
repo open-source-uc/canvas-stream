@@ -62,8 +62,5 @@ class Requester:
 
     def download(self, url: str, path: Path):
         "Downloads a file from a Canvas `url` to a `path`"
-        # TODO: this check should be donde when saving the url to the database
-        if "verifier" not in parse_qs(urlsplit(url).query):
-            print(f"Error: skiping file: {path}")
-        else:
-            dowload_to_file(self.get(url, stream=True), path)
+        # A response steam object is given to a downloader function
+        dowload_to_file(self.get(url, stream=True), path)

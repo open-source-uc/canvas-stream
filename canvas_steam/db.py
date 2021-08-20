@@ -34,6 +34,7 @@ class File(Table):
     download_url: str
     course_id: int
     folder_id: Optional[int] = None
+    module_name: Optional[str] = None
     updated_at: Optional[str] = None
     saved_at: Optional[str] = None
 
@@ -44,5 +45,6 @@ class ExternalURL(Table):
     url: str
     title: str
     course_id: int
+    module_name: str
     updated_at: Optional[str] = None
     saved_at: Optional[str] = None

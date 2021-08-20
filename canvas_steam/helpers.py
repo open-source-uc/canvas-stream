@@ -6,6 +6,8 @@ import unicodedata
 import re
 from pathlib import Path
 from datetime import datetime
+from string import Template
+from urllib.parse import urlsplit, parse_qs
 
 import requests
 
@@ -32,6 +34,7 @@ def slugify(value: str) -> str:
         .replace(r"/", "-")
         .replace("\\", "-")
         .replace("*", "")
+        .replace(":", "")
     )
     return re.sub(r"[-]+", "-", value).strip("_-.")
 
@@ -56,3 +59,26 @@ def dowload_to_file(request_stream: requests.Response, path: Path):
             progress += len(data)
             print(f"{progress / total_bytes:4.0%} -- {path}", end="\r")
         print(end="\n")
+
+
+HTML_HYPERLINK_DOCUMENT_TEMPLATE = Template(
+    """
+<html>
+    <head>
+        <meta http-equiv="refresh" content="0; url=${url}" />
+    </head>
+</html>
+"""
+)
+
+
+def html_hyperlink_document(url: str):
+    """OS-independent solution to make .url like files"""
+    return HTML_HYPERLINK_DOCUMENT_TEMPLATE.substitute(dict(url=url))
+
+
+def userfull_download_url_or_empty_str(url: str):
+    "Verifies if the `verifier` key is in the url parameters"
+    if "verifier" in parse_qs(urlsplit(url).query):
+        return url
+    return ""
