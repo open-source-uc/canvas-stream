@@ -5,30 +5,27 @@ from __future__ import annotations
 import datetime
 from pathlib import Path
 import sys
-from typing import Any, Iterable, Mapping
 import time
 
 import toml
 from requests import RequestException
 
-from .requester import Requester
+from .api import CanvasAPI
+from .api.types import GraphQLModule, GraphQLModuleItem, RestFile
+
 from .helpers import (
-    get_gql_query,
     html_hyperlink_document,
     naive_datetime,
     slugify,
     userfull_download_url_or_empty_str,
 )
+
 from .db_api import DataBase
 from . import db as schema
 from .db import Course, ExternalURL, File, Folder
 
 
-StrMapping = Mapping[str, Any]
-
-GQL_COURSES = get_gql_query("courses")
-GQL_MODULES_AND_ITEMS = get_gql_query("modules_items")
-REST_FAVORITES_COURSES = "/users/self/favorites/courses"
+# TODO: reestructure main and _main_loop to make it more compact
 
 
 def get_config():
@@ -41,20 +38,17 @@ def get_config():
 def main(pause_time=20):
     "Main program. Run Ctrl+Z to stop it"
     print("Starting the program, stop it with Ctrl+Z")
-    requester = Requester(*get_config())
+    requester = CanvasAPI(*get_config())
     database = DataBase("canvas.db")
     database.load_schema(schema)
 
-    favorite_courses = requester.api_rest(REST_FAVORITES_COURSES)
-    for content in favorite_courses:
-        course = Course(
-            id=content["id"],
-            code=content["course_code"],
-            name=content["name"],
+    for favorite_course in requester.favorite_courses():
+        Course(
+            id=favorite_course["id"],
+            code=favorite_course["course_code"],
+            name=favorite_course["name"],
             is_favorite=True,
-        )
-        course.upsert()
-    database.connection.commit()
+        ).upsert()
     try:
         while True:
             print("Running iteration...")
@@ -65,10 +59,10 @@ def main(pause_time=20):
         sys.exit(0)
 
 
-def _main_loop(requester: Requester):
+def _main_loop(requester: CanvasAPI):
     "Main application loop"
     # 1. Check periodically every favorite course to see if it has new content
-    courses = requester.api_gql(GQL_COURSES)["allCourses"]
+    courses = requester.all_courses()
     for content in courses:
         course = next(Course.find(id=content["_id"]), None)
 
@@ -88,13 +82,12 @@ def _main_loop(requester: Requester):
         print(f"Updating references of {course.name}")
 
         # 2. Check course modules items (files & external URLs)
-        response = requester.api_gql(GQL_MODULES_AND_ITEMS, {"course_id": course.id})
-        for module in response["course"]["modulesConnection"]["nodes"]:
-            for item in module["moduleItems"]:
-                _save_module_item(item, course.id, module)
+        modules = requester.modules_with_items(course.id)
+        for module in modules:
+            _save_module_items(module["moduleItems"], course.id, module)
 
         # 3. Check folders (files)
-        folders = requester.api_rest(f"/courses/{course.id}/folders")
+        folders = requester.folders(course.id)
         for folder_info in folders:
             folder = Folder(
                 id=folder_info["id"],
@@ -111,7 +104,7 @@ def _main_loop(requester: Requester):
                 continue
 
             try:
-                files = requester.api_rest(f"/folders/{folder.id}/files")
+                files = requester.files(folder.id)
             except RequestException:
                 print(f"Request error with folder {folder.id} ({course.name})")
                 continue
@@ -133,7 +126,12 @@ def _main_loop(requester: Requester):
         # to download the file.
         # `download_url` will be empty in those cases.
         if not file.download_url:
-            continue
+            # A now request is made here to try again, but now
+            # only asking for the information of the file
+            file_data = requester.file(file.id)
+            file.download_url = userfull_download_url_or_empty_str(file_data["url"])
+            if not file.download_url:
+                continue
 
         requester.download(file.download_url, _complete_file_path(file))
         file.saved_at = datetime.datetime.now().isoformat()
@@ -150,54 +148,56 @@ def _main_loop(requester: Requester):
         print(f" URL -- {external_url_path}")
         with external_url_path.open("w") as io_file:
             io_file.write(html_hyperlink_document(external_url.url))
+        external_url.saved_at = datetime.datetime.now().isoformat()
+        external_url.upsert()
 
 
-def _save_module_item(item: StrMapping, course_id: int, module: StrMapping):
-    if not item["content"]:
-        return
+def _save_module_items(
+    items: list[GraphQLModuleItem], course_id: int, module: GraphQLModule
+) -> None:
+    for item in items:
+        if not item["content"]:
+            continue
 
-    content = item["content"]
-    if content["type"] == "File":
-        file = File(
-            id=content["_id"],
-            course_id=course_id,
-            download_url=userfull_download_url_or_empty_str(content["url"]),
-            name=content["displayName"],
-            module_name=module["name"],
-            updated_at=naive_datetime(content["updatedAt"]),
-        )
-        file.upsert()
-    elif content["type"] == "ExternalUrl":
-        ext_url = ExternalURL(
-            id=content["_id"],
-            url=content["url"],
-            course_id=course_id,
-            module_name=module["name"],
-            updated_at=naive_datetime(content["updatedAt"]),
-            title=content["title"],
-        )
-        ext_url.upsert()
+        content = item["content"]
+        if content["type"] == "File":
+            File(
+                id=int(content["_id"]),
+                course_id=course_id,
+                download_url=userfull_download_url_or_empty_str(content["url"]),
+                name=content["name"],
+                module_name=module["name"],
+                updated_at=naive_datetime(content["updatedAt"]),
+            ).upsert()
+        elif content["type"] == "ExternalUrl":
+            ExternalURL(
+                id=int(content["_id"]),
+                url=content["url"],
+                course_id=course_id,
+                module_name=module["name"],
+                updated_at=naive_datetime(content["updatedAt"]),
+                title=content["name"],
+            ).upsert()
 
 
-def _save_files(files: Iterable[StrMapping], folder_id: int, course_id: int):
+def _save_files(files: list[RestFile], folder_id: int, course_id: int) -> None:
     for file_data in files:
-        file = File(
+        File(
             id=file_data["id"],
             name=file_data["filename"],
             download_url=userfull_download_url_or_empty_str(file_data["url"]),
             updated_at=naive_datetime(file_data["updated_at"]),
             course_id=course_id,
             folder_id=folder_id,
-        )
-        file.upsert()
+        ).upsert()
 
 
-def _complete_path(course_id: int, path: Path):
+def _complete_path(course_id: int, path: Path) -> Path:
     course = next(Course.find(id=course_id))
     return Path("canvas", slugify(course.name), path)
 
 
-def _complete_file_path(file: File):
+def _complete_file_path(file: File) -> Path:
     file_path = Path(slugify(file.name))
 
     if file.folder_id:
@@ -208,6 +208,6 @@ def _complete_file_path(file: File):
     return _complete_path(file.course_id, file_path)
 
 
-def _complete_external_url_path(ext_url: ExternalURL):
+def _complete_external_url_path(ext_url: ExternalURL) -> Path:
     ext_url_path = Path(slugify(ext_url.module_name), slugify(ext_url.title) + ".html")
     return _complete_path(ext_url.course_id, ext_url_path)

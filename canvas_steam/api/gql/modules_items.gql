@@ -1,6 +1,10 @@
-query ($course_id: ID) {
+query ($course_id: ID, $after: String = null) {
   course(id: $course_id) {
-    modulesConnection(first: 15) {
+    modulesConnection(first: 10, after: $after) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
       nodes {
         _id
         updatedAt
@@ -13,14 +17,14 @@ query ($course_id: ID) {
               type: __typename
               _id
               updatedAt
-              displayName
+              name: displayName
               url
             }
             ... on ExternalUrl {
               type: __typename
               _id
               updatedAt
-              title
+              name: title
               url
             }
           }
