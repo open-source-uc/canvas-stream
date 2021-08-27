@@ -1,4 +1,4 @@
-# Canvas-Steam
+# Canvas-Stream
 
 A [smart](#smart) and [small](#small) python module for downloading
 the current favorite courses files from Canvas-LMS.

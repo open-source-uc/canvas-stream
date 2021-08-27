@@ -20,9 +20,8 @@ from .helpers import (
     userfull_download_url_or_empty_str,
 )
 
-from .db_api import DataBase
-from . import db as schema
-from .db import Course, ExternalURL, File, Folder
+from .db import DataBase, schema
+from .db.schema import Course, ExternalURL, File, Folder
 
 
 # TODO: reestructure main and _main_loop to make it more compact
