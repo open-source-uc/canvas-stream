@@ -13,7 +13,13 @@ from collections import defaultdict
 T = TypeVar("T", bound="Table")
 
 PYTHON_TO_SQLITE: DefaultDict[type | None, str] = defaultdict(
-    lambda: "TEXT", {None: "NULL", float: "REAL", int: "INTEGER", bool: "INTEGER",},
+    lambda: "TEXT",
+    {
+        None: "NULL",
+        float: "REAL",
+        int: "INTEGER",
+        bool: "INTEGER",
+    },
 )
 
 
