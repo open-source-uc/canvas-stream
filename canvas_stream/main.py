@@ -11,7 +11,6 @@ import toml
 from requests import RequestException
 
 from .api import CanvasAPI
-from .api.types import GraphQLModule, GraphQLModuleItem, RestFile
 
 from .helpers import (
     html_hyperlink_document,
@@ -23,8 +22,7 @@ from .helpers import (
 from .db import DataBase, schema
 from .db.schema import Course, ExternalURL, File, Folder
 
-
-# TODO: reestructure main and _main_loop to make it more compact
+from . import save
 
 
 def get_config():
@@ -41,24 +39,19 @@ def main(pause_time=20):
     database = DataBase("canvas.db")
     database.load_schema(schema)
 
-    for favorite_course in requester.favorite_courses():
-        Course(
-            id=favorite_course["id"],
-            code=favorite_course["course_code"],
-            name=favorite_course["name"],
-            is_favorite=True,
-        ).upsert()
+    for course in requester.favorite_courses():
+        save.favorite_course(course)
     try:
         while True:
             print("Running iteration...")
-            _main_loop(requester)
+            _run_iteration(requester)
             print(f"Waiting {pause_time} seconds before next iteration")
             time.sleep(pause_time)
     except KeyboardInterrupt:
         sys.exit(0)
 
 
-def _main_loop(requester: CanvasAPI):
+def _run_iteration(requester: CanvasAPI):
     "Main application loop"
     # 1. Check periodically every favorite course to see if it has new content
     courses = requester.all_courses()
@@ -83,19 +76,12 @@ def _main_loop(requester: CanvasAPI):
         # 2. Check course modules items (files & external URLs)
         modules = requester.modules_with_items(course.id)
         for module in modules:
-            _save_module_items(module["moduleItems"], course.id, module)
+            save.module_items(module["moduleItems"], course.id, module)
 
         # 3. Check folders (files)
         folders = requester.folders(course.id)
         for folder_info in folders:
-            folder = Folder(
-                id=folder_info["id"],
-                full_name=folder_info["full_name"],
-                files_count=folder_info["files_count"],
-                course_id=course.id,
-                parent_id=folder_info["parent_folder_id"],
-                updated_at=naive_datetime(folder_info["updated_at"]),
-            )
+            folder = save.folder(folder_info, course.id)
             # Since checking the files in a folder requieres a request,
             # avoiding making one with the saved_at and updated_at is optimal
             is_saved = folder.saved_at and folder.saved_at >= folder.updated_at
@@ -104,14 +90,11 @@ def _main_loop(requester: CanvasAPI):
 
             try:
                 files = requester.files(folder.id)
+                save.files(files, folder.id, course.id)
+                folder.saved_at = datetime.datetime.now().isoformat()
+                folder.upsert()
             except RequestException:
                 print(f"Request error with folder {folder.id} ({course.name})")
-                continue
-
-            _save_files(files, folder.id, course.id)
-
-            folder.saved_at = datetime.datetime.now().isoformat()
-            folder.upsert()
 
         # 4. Mark the course as saved
         course.saved_at = datetime.datetime.now().isoformat()
@@ -149,46 +132,6 @@ def _main_loop(requester: CanvasAPI):
             io_file.write(html_hyperlink_document(external_url.url))
         external_url.saved_at = datetime.datetime.now().isoformat()
         external_url.upsert()
-
-
-def _save_module_items(
-    items: list[GraphQLModuleItem], course_id: int, module: GraphQLModule
-) -> None:
-    for item in items:
-        if not item["content"]:
-            continue
-
-        content = item["content"]
-        if content["type"] == "File":
-            File(
-                id=int(content["_id"]),
-                course_id=course_id,
-                download_url=userfull_download_url_or_empty_str(content["url"]),
-                name=content["name"],
-                module_name=module["name"],
-                updated_at=naive_datetime(content["updatedAt"]),
-            ).upsert()
-        elif content["type"] == "ExternalUrl":
-            ExternalURL(
-                id=int(content["_id"]),
-                url=content["url"],
-                course_id=course_id,
-                module_name=module["name"],
-                updated_at=naive_datetime(content["updatedAt"]),
-                title=content["name"],
-            ).upsert()
-
-
-def _save_files(files: list[RestFile], folder_id: int, course_id: int) -> None:
-    for file_data in files:
-        File(
-            id=file_data["id"],
-            name=file_data["filename"],
-            download_url=userfull_download_url_or_empty_str(file_data["url"]),
-            updated_at=naive_datetime(file_data["updated_at"]),
-            course_id=course_id,
-            folder_id=folder_id,
-        ).upsert()
 
 
 def _complete_path(course_id: int, path: Path) -> Path:
