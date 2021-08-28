@@ -1,4 +1,4 @@
 "Canvas Stream"
 
-from .main import main, get_config
+from .main import CanvasStream, main
 from .api import CanvasAPI
