@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from urllib.parse import urlsplit, urlunsplit
-from pathlib import Path
 import http.client
 
 import requests
