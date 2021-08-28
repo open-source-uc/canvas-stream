@@ -1,4 +1,4 @@
-# Canvas-Steam
+# Canvas-Stream
 
 A [smart](#smart) and [small](#small) python module for downloading
 the current favorite courses files from Canvas-LMS.
@@ -34,7 +34,7 @@ python -m pip install -r requirements.txt
 Then, run the program with:
 
 ```
-python -m canvas_steam
+python -m canvas_stream
 ```
 
 ### Development
@@ -52,9 +52,9 @@ python -m pip install -r requirements.dev.txt
 Before committing, run the following commands:
 
 ```bash
-black canvas_steam
-mypy canvas_steam
-pylint canvas_steam  # TODO: add linter config
+black canvas_stream
+mypy canvas_stream
+pylint canvas_stream  # TODO: add linter config
 ```
 
 ## Notes

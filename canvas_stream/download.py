@@ -5,6 +5,8 @@ from pathlib import Path
 import requests
 
 CHUNK_SIZE = 4096
+
+
 def dowload_to_file(request_stream: requests.Response, path: Path):
     "Downloads a file"
     content_length = request_stream.headers.get("content-length", None)

@@ -1,8 +1,8 @@
-"DataBase helpers"
+"Database schema"
 
 from dataclasses import dataclass
 from typing import Optional
-from .db_api import Table
+from .api import Table
 
 
 @dataclass

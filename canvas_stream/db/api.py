@@ -3,6 +3,8 @@
 # This "DB API" is a simplified version of an experiment that I have been doing
 # with a toy ORM. Some things are hardcoded for simplicity, like the pk.
 
+# Note: a new python module has been recently released, with the same interface
+# to create tables, https://github.com/tiangolo/sqlmodel.
 
 from __future__ import annotations
 import sqlite3

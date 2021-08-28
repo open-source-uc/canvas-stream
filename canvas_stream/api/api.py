@@ -8,7 +8,6 @@ import http.client
 
 import requests
 
-from .dowload import dowload_to_file
 from .helpers import gql_query
 from .types import GraphQLCourse, GraphQLModule, RestCourse, RestFile, RestFolder
 
@@ -75,9 +74,9 @@ class CanvasAPI:
         errors = ", ".join(map(lambda e: e["message"], response["errors"]))
         raise requests.RequestException(f"GQL error: {errors}")
 
-    def download(self, url: str, path: Path):
-        "Downloads a file from a Canvas `url` to a `path`"
-        dowload_to_file(self._get(url, stream=True), path)
+    def download(self, url: str):
+        "Returns a downloads a file from a Canvas `url`"
+        return self._get(url, stream=True)
 
     def all_courses(self) -> list[GraphQLCourse]:
         "All courses available for the user"

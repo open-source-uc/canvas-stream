@@ -1,4 +1,4 @@
-"Canvas Steam"
+"Canvas Stream"
 
 import sys
 
