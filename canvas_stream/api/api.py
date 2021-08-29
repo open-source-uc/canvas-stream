@@ -75,7 +75,7 @@ class CanvasAPI:
         raise requests.RequestException(f"GQL error: {errors}")
 
     def download(self, url: str):
-        "Returns a downloads a file from a Canvas `url`"
+        "Returns a response stream from a `url` that may be used to dowload a file"
         return self._get(url, stream=True)
 
     def all_courses(self) -> list[GraphQLCourse]:
