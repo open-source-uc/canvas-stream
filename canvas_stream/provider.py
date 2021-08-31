@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from string import Template
 from typing import Any, Callable, Mapping
+from typing_extensions import final
 
 from requests import Response
 from canvas_stream.helpers import slugify
@@ -58,31 +59,26 @@ class CanvasStreamProvider:
 
     external_url_download_recipes: list[ExternalUrlRecipe] = [html_redirect]
 
+    @final  # (don't override)
     def __init__(self, config: Mapping[str, Any], dowload: DowloadFunction) -> None:
         self.config = config
-        # Dowloading a file from canvas might requiere credentials.
-        # This could be deleted in the future.
+        # Dowloading a file from canvas might requiere credentials. This could
+        # be deleted in the future if files could be downloaded only with the URL.
         self.dowload = dowload
 
-    def save_file_to_system(self, file: File, path: Path):
+    def save_file_to_system(self, file: File, path: Path) -> None:
         "Dowloads a `file` and saves it to `path`"
         dowload_to_file(self.dowload(file.download_url), path)
 
-    def save_external_url_to_system(self, external_url: ExternalURL, path: Path):
+    def save_external_url_to_system(self, external_url: ExternalURL, path: Path) -> None:
         "Tries each function of `external_url_download_recipes` until one returns `true`"
         for recipe in self.external_url_download_recipes:
             if recipe(external_url, path):
-                print(f" URL -- {path}")
-                return
+                return print(f" URL -- {path}")
 
-    def course_absolute_path(self, course: Course) -> Path:
-        """
-        Creates an absolute path from the union of the
-        configuration value `output_path` and `course.name`.
-        """
-        return Path(
-            self.config.get("output_path", "canvas"), slugify(course.name)
-        ).resolve()
+    def course_relative_path(self, course: Course) -> Path:
+        "Directory path of the course relative to the output directory"
+        return Path(slugify(course.name))
 
     def file_relative_path(self, file: File) -> Path:
         """

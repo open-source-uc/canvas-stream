@@ -26,9 +26,11 @@ def main(pause_time=60, iterate=True):
 
 StrMapping = Mapping[str, Any]
 
+
 class CanvasStream:
     "CanvasStream main class"
     __slots__ = ["database", "requester", "config", "__provider"]
+
     def __init__(self, *, config: StrMapping = None) -> None:
         """
         Creates a CanvasStream instance.
@@ -47,15 +49,13 @@ class CanvasStream:
         self.database.load_schema(schema)
 
         self.requester = CanvasAPI(
-            url=self.config["url"],
-            access_token=self.config["access_token"]
+            url=self.config["url"], access_token=self.config["access_token"]
         )
 
         self.__provider = CanvasStreamProvider(self.config, self.requester.download)
 
-    def set_provider(self, provider_class: type):
+    def set_provider(self, provider_class: type[CanvasStreamProvider]):
         "Sets a new proveider"
-        assert issubclass(provider_class, CanvasStreamProvider)
         self.__provider = provider_class(self.config, self.requester.download)
 
     def run(self, pause_time=60, iterate=True):
@@ -159,7 +159,9 @@ class CanvasStream:
 
     def _complete_path(self, course_id: int, relative_path: Path) -> Path:
         course = next(Course.find(id=course_id))
-        course_path = self.__provider.course_absolute_path(course)
-        path = course_path.joinpath(relative_path)
+        course_path = self.__provider.course_relative_path(course)
+        path = Path(self.config.get("output_path", "canvas")).joinpath(
+            course_path, relative_path
+        )
         path.parent.mkdir(parents=True, exist_ok=True)
         return path

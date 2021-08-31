@@ -26,7 +26,7 @@ class CustomProvider(CanvasStreamProvider):
     ]
     def save_file_to_system(self, file, path) -> None: ...
     def save_external_url_to_system(self, external_url, path) -> None: ...
-    def course_absolute_path(self, course) -> Path: ...
+    def course_relative_path(self, course) -> Path: ...
     def file_relative_path(self) -> Path: ...
     def external_url_relative_path(self, external_url) -> Path: ...
 
@@ -44,6 +44,8 @@ not `python -m canvas_stream`.
 ## Complete example
 
 ```py
+# ./run.py
+
 from __future__ import annotations
 
 import re
@@ -85,12 +87,9 @@ class CustomProvider(CanvasStreamProvider):
         # Include the default recipes
         *CanvasStreamProvider.external_url_download_recipes
     ]
-
-    def course_absolute_path(self, course: Course) -> Path:
+    def course_relative_path(self, course: Course) -> Path:
         # changes the course directory name
-        return Path(
-            self.config.get("output_path", "canvas"), slugify(course.code)
-        ).resolve()
+        return Path(slugify(course.code))
 
 
 canvas_stream_instance = CanvasStream()
