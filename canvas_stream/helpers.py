@@ -29,7 +29,7 @@ def slugify(value: str) -> str:
         .replace("?", "")
         .replace("|", "")
     )
-    return re.sub(r"[-]+", "-", value).strip("_-.")
+    return re.sub(r"[-]+", "-", value).strip("_-. ")
 
 
 HTML_HYPERLINK_DOCUMENT_TEMPLATE = Template(

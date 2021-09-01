@@ -6,40 +6,57 @@ import datetime
 from pathlib import Path
 import sys
 import time
+from typing import Any, Mapping
 
 import toml
 from requests import RequestException
 
-from .api import CanvasAPI
-
-from .helpers import (
-    html_hyperlink_document,
-    naive_datetime,
-    slugify,
-    userfull_download_url_or_empty_str,
-)
-from .download import dowload_to_file
-
-from .db import DataBase, schema
-from .db.schema import Course, ExternalURL, File, Folder
-
 from . import save
+from .api import CanvasAPI
+from .helpers import naive_datetime, userfull_download_url_or_empty_str
+from .db import DataBase, schema
+from .db.schema import Course, ExternalURL, File
+from .provider import CanvasStreamProvider
 
 
 def main(pause_time=60, iterate=True):
     "Runs `CanvasStream().run()`"
     CanvasStream().run(pause_time, iterate)
 
+
+StrMapping = Mapping[str, Any]
+
+
 class CanvasStream:
-    def __init__(self) -> None:
-        with open("config.toml") as file:
-            self.config = toml.load(file)
+    "CanvasStream main class"
+    __slots__ = ["database", "requester", "config", "__provider"]
+
+    def __init__(self, *, config: StrMapping = None) -> None:
+        """
+        Creates a CanvasStream instance.
+
+        If a configuration mapping is not given, it will load
+        the configuration from `config.toml`
+        """
+
+        if config:
+            self.config = config
+        else:
+            with open("config.toml") as file:
+                self.config = toml.load(file)
+
         self.database = DataBase(self.config.get("db_name", "canvas.db"))
         self.database.load_schema(schema)
+
         self.requester = CanvasAPI(
-            url=self.config["url"],
-            access_token=self.config["access_token"]
+            url=self.config["url"], access_token=self.config["access_token"]
         )
+
+        self.__provider = CanvasStreamProvider(self.config, self.requester.download)
+
+    def set_provider(self, provider_class: type[CanvasStreamProvider]):
+        "Sets a new proveider"
+        self.__provider = provider_class(self.config, self.requester.download)
 
     def run(self, pause_time=60, iterate=True):
         "Main program. Run Ctrl+Z to stop it"
@@ -79,10 +96,10 @@ class CanvasStream:
 
         print("Dowloading new files...")
         for file in File.find_not_saved():
-            self._save_file_to_system(file)
+            self._save_file(file)
 
         for external_url in ExternalURL.find_not_saved():
-            self._save_external_url_to_system(external_url)
+            self._save_external_url(external_url)
 
     def _update_courses_references(self, course: Course):
         # Check course modules items (files & external URLs)
@@ -112,7 +129,7 @@ class CanvasStream:
         course.saved_at = datetime.datetime.now().isoformat()
         course.upsert()
 
-    def _save_file_to_system(self, file: File):
+    def _save_file(self, file: File):
         # In some cases, the URL obtained from the API
         # doesn't have the verifier that makes it posible
         # to download the file.
@@ -125,38 +142,26 @@ class CanvasStream:
             if not file.download_url:
                 return
 
-        dowload_to_file(self.requester.download(file.download_url), self._complete_file_path(file))
+        relative_path = self.__provider.file_relative_path(file)
+        absolute_path = self._complete_path(file.course_id, relative_path)
 
+        self.__provider.save_file_to_system(file, absolute_path)
         file.saved_at = datetime.datetime.now().isoformat()
         file.upsert()
 
-    def _save_external_url_to_system(self, external_url: ExternalURL):
-        # if external_url is "google drive":
-        # gdown.download(external_url.url)
+    def _save_external_url(self, external_url: ExternalURL):
+        relative_path = self.__provider.external_url_relative_path(external_url)
+        absolute_path = self._complete_path(external_url.course_id, relative_path)
 
-        # Base Case: make a file linking to the URL
-        external_url_path = self._complete_external_url_path(external_url)
-        external_url_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f" URL -- {external_url_path}")
-        with external_url_path.open("w") as io_file:
-            io_file.write(html_hyperlink_document(external_url.url))
+        self.__provider.save_external_url_to_system(external_url, absolute_path)
         external_url.saved_at = datetime.datetime.now().isoformat()
         external_url.upsert()
 
-    def _complete_path(self, course_id: int, path: Path) -> Path:
+    def _complete_path(self, course_id: int, relative_path: Path) -> Path:
         course = next(Course.find(id=course_id))
-        return Path(self.config.get("output_path", "canvas"), slugify(course.name), path)
-
-    def _complete_file_path(self, file: File) -> Path:
-        file_path = Path(slugify(file.name))
-
-        if file.folder_id:
-            folder = next(Folder.find(id=file.folder_id))
-            parent_path_parts = map(slugify, Path(folder.full_name).parts)
-            file_path = Path(*parent_path_parts, file_path)
-
-        return self._complete_path(file.course_id, file_path)
-
-    def _complete_external_url_path(self, ext_url: ExternalURL) -> Path:
-        ext_url_path = Path(slugify(ext_url.module_name), slugify(ext_url.title) + ".html")
-        return self._complete_path(ext_url.course_id, ext_url_path)
+        course_path = self.__provider.course_relative_path(course)
+        path = Path(self.config.get("output_path", "canvas")).joinpath(
+            course_path, relative_path
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
