@@ -1,0 +1,22 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+requests = "==2.26"
+toml = "==0.10"
+google-api-python-client = "*"
+google-auth-httplib2 = "*"
+google-auth-oauthlib = "*"
+tqdm = "*"
+
+[dev-packages]
+mypy = "*"
+types-toml = "*"
+types-requests = "*"
+flake8 = "*"
+pycodestyle = "*"
+
+[requires]
+python_version = "3.9"

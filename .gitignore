@@ -12,3 +12,6 @@ config.toml
 # other
 .DS_Store
 .idea
+
+!.keep
+tokens/*
