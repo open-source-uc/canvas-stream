@@ -56,7 +56,7 @@ class CanvasAPI:
         # In this case the response is a json list
         response_data = response.json()
         while new_page:
-            pagination_response = self._session.get(new_page)
+            pagination_response = self._session.get(new_page["url"])
             response_data.extend(pagination_response.json())
             new_page = response.links.get("next", None)
         return response_data
