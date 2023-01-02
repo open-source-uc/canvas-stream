@@ -24,7 +24,7 @@ Then run the following commands:
 python3 -m venv .venv
 
 # on unix-like system
-. .env/bin/activate
+. .venv/bin/activate
 # on Windows
 . .\.venv\Scripts\Activate.ps1
 
